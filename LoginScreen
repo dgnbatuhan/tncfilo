@@ -1,0 +1,77 @@
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+
+export default function LoginScreen({ navigation }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!username || !password) {
+      Alert.alert('Uyarı', 'Lütfen tüm alanları doldurun');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // PHP API URL'nizi buraya yazın
+      const response = await fetch('https://dgnbatuhan.online/filo/api_login.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        navigation.replace('Home');
+      } else {
+        Alert.alert('Hata', data.message || 'Giriş başarısız');
+      }
+    } catch (error) {
+      Alert.alert('Bağlantı Hatası', 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.logo}>Filo Yönetimi</Text>
+      
+      <TextInput 
+        style={styles.input} 
+        placeholder="Kullanıcı Adı" 
+        autoCapitalize="none"
+        onChangeText={setUsername}
+      />
+      
+      <TextInput 
+        style={styles.input} 
+        placeholder="Şifre" 
+        secureTextEntry 
+        onChangeText={setPassword}
+      />
+      
+      <TouchableOpacity 
+        style={[styles.button, loading && { opacity: 0.7 }]} 
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Giriş Yap</Text>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', padding: 25, backgroundColor: '#f4f7f6' },
+  logo: { fontSize: 36, fontWeight: 'bold', textAlign: 'center', marginBottom: 50, color: '#0d6efd' },
+  input: { backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#e0e0e0', fontSize: 16 },
+  button: { backgroundColor: '#0d6efd', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, elevation: 3 },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 18 }
+});
