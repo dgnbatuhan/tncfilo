@@ -1,0 +1,247 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  View, Text, FlatList, TextInput, StyleSheet, 
+  ActivityIndicator, TouchableOpacity, RefreshControl, StatusBar 
+} from 'react-native';
+
+export default function HomeScreen({ navigation }) {
+  const [activeTab, setActiveTab] = useState('list');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [araclar, setAraclar] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
+  const [search, setSearch] = useState('');
+
+  const fetchData = async () => {
+    try {
+      const response = await fetch(`https://dgnbatuhan.online/filo/api_get_vehicles.php?t=${new Date().getTime()}`);
+      const data = await response.json();
+      setAraclar(data);
+      processTabData(activeTab, data, search);
+    } catch (error) {
+      console.error("Veri çekme hatası:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  useEffect(() => {
+    processTabData(activeTab, araclar, search);
+  }, [activeTab, search, araclar]);
+
+  // GÜN HESAPLAMA MANTIĞI
+  const getKalanGun = (tarihStr) => {
+    if (!tarihStr || tarihStr === "0000-00-00" || tarihStr === "null") return null;
+    const bugun = new Date();
+    bugun.setHours(0, 0, 0, 0);
+    const hedef = new Date(tarihStr);
+    hedef.setHours(0, 0, 0, 0);
+    if (isNaN(hedef.getTime())) return null;
+    const farkMs = hedef.getTime() - bugun.getTime();
+    return Math.ceil(farkMs / (1000 * 60 * 60 * 24));
+  };
+
+  const processTabData = (tab, data, query) => {
+    let result = [];
+    if (tab === 'list') {
+      result = data.filter(item => 
+        item.plaka.toLowerCase().includes(query.toLowerCase()) ||
+        (item.araç_kullanicisi && item.araç_kullanicisi.toLowerCase().includes(query.toLowerCase()))
+      );
+    } else if (tab === 'critical') {
+      result = data.filter(item => {
+        const m = getKalanGun(item.muayene_tarihi);
+        const k = getKalanGun(item.kasko_bitis_tarihi);
+        const s = getKalanGun(item.trafik_sigorta_tarihi);
+        const kr = getKalanGun(item.kira_bitis);
+        return (m !== null && m >= 0 && m <= 30) || 
+               (k !== null && k >= 0 && k <= 30) || 
+               (s !== null && s >= 0 && s <= 30) ||
+               (kr !== null && kr >= 0 && kr <= 30);
+      });
+    } else if (tab === 'history') {
+      let allHistory = [];
+      data.forEach(v => {
+        if (v.servis_gecmisi) {
+          v.servis_gecmisi.forEach(s => {
+            allHistory.push({ ...s, plaka: v.plaka });
+          });
+        }
+      });
+      result = allHistory.sort((a, b) => new Date(b.islem_tarihi) - new Date(a.islem_tarihi));
+      if (query) {
+        result = result.filter(s => s.plaka.toLowerCase().includes(query.toLowerCase()));
+      }
+    }
+    setFilteredData(result);
+  };
+
+  // 1. ARAÇ LİSTESİ GÖRÜNÜMÜ
+  const renderListItem = ({ item }) => (
+    <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('Detail', { vehicle: item })}>
+      <View style={styles.plakaBadge}>
+        <View style={styles.trStrip} />
+        <Text style={styles.plakaText}>{item.plaka}</Text>
+      </View>
+      <View style={styles.info}>
+        <Text style={styles.modelText}>{item.marka_model}</Text>
+        <Text style={styles.userText}>{item.araç_kullanicisi || 'Belirtilmemiş'}</Text>
+      </View>
+      <Text style={styles.arrow}>〉</Text>
+    </TouchableOpacity>
+  );
+
+  // 2. KRİTİK İŞLEMLER GÖRÜNÜMÜ
+  const renderCriticalItem = ({ item }) => (
+    <View style={styles.criticalCard}>
+      <View style={styles.criticalHeader}>
+        <View style={styles.plakaBadgeSmall}>
+          <View style={styles.trStripSmall} />
+          <Text style={styles.plakaTextSmall}>{item.plaka}</Text>
+        </View>
+        <Text style={styles.modelTextSmall}>{item.marka_model}</Text>
+      </View>
+      <View style={styles.criticalBody}>
+        <DateRow label="Muayene" date={item.muayene_tarihi} days={getKalanGun(item.muayene_tarihi)} color="#e74c3c" />
+        <DateRow label="Kasko Bitiş" date={item.kasko_bitis_tarihi} days={getKalanGun(item.kasko_bitis_tarihi)} color="#f39c12" />
+        <DateRow label="Tr. Sigorta" date={item.trafik_sigorta_tarihi} days={getKalanGun(item.trafik_sigorta_tarihi)} color="#27ae60" />
+        <DateRow label="Kira Bitiş" date={item.kira_bitis} days={getKalanGun(item.kira_bitis)} color="#2980b9" />
+      </View>
+    </View>
+  );
+
+  // 3. GEÇMİŞ (SERVİS) GÖRÜNÜMÜ - AÇIKLAMA EKLENDİ
+  const renderHistoryItem = ({ item }) => (
+    <View style={styles.historyCard}>
+      <View style={styles.historyTop}>
+        <View style={styles.plakaBadgeSmall}>
+          <View style={styles.trStripSmall} />
+          <Text style={styles.plakaTextSmall}>{item.plaka}</Text>
+        </View>
+        <Text style={styles.historyDate}>{item.islem_tarihi}</Text>
+      </View>
+      
+      <View style={styles.historyMid}>
+        <Text style={styles.historyType}>{item.islem_tipi}</Text>
+        {item.aciklama ? (
+          <Text style={styles.historyDescription}>{item.aciklama}</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.historyBottom}>
+        <View style={styles.kmBadge}>
+          <Text style={styles.historyKM}>{item.km_bilgisi} KM</Text>
+        </View>
+        <Text style={styles.historyPrice}>{item.maliyet} TL</Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+     
+      
+      <View style={styles.tabWrapper}>
+        <TabButton title="ARAÇLAR" active={activeTab === 'list'} onPress={() => setActiveTab('list')} />
+        <TabButton title="KRİTİK" active={activeTab === 'critical'} onPress={() => setActiveTab('critical')} />
+        <TabButton title="GEÇMİŞ" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
+      </View>
+
+      <View style={styles.searchContainer}>
+        <TextInput 
+          style={styles.searchBar} 
+          placeholder="Plaka veya isim ile ara..." 
+          value={search} 
+          onChangeText={setSearch} 
+        />
+      </View>
+
+      <FlatList
+        data={filteredData}
+        keyExtractor={(item, index) => index.toString()}
+        renderItem={activeTab === 'list' ? renderListItem : (activeTab === 'critical' ? renderCriticalItem : renderHistoryItem)}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {setRefreshing(true); fetchData();}} />}
+        ListEmptyComponent={<Text style={styles.emptyText}>Sonuç bulunamadı.</Text>}
+        contentContainerStyle={{ padding: 12, paddingBottom: 30 }}
+      />
+    </View>
+  );
+}
+
+// YARDIMCI BİLEŞENLER
+const TabButton = ({ title, active, onPress }) => (
+  <TouchableOpacity onPress={onPress} style={[styles.tabItem, active && styles.activeTab]}>
+    <Text style={[styles.tabText, active && styles.activeTabText]}>{title}</Text>
+  </TouchableOpacity>
+);
+
+const DateRow = ({ label, date, days, color }) => {
+  if (days === null || days > 30 || days < 0) return null;
+  return (
+    <View style={styles.dateRow}>
+      <View style={[styles.dateLabelBadge, {borderLeftColor: color}]}>
+         <Text style={styles.dateLabel}>{label}</Text>
+      </View>
+      <Text style={styles.dateVal}>{date}</Text>
+      <View style={[styles.daysBadge, {backgroundColor: color}]}>
+        <Text style={styles.daysText}>{days} GÜN</Text>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  headerTitleContainer: { backgroundColor: '#fff', paddingVertical: 15, alignItems: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '900', color: '#1a1a1a', letterSpacing: 1.5 },
+  tabWrapper: { flexDirection: 'row', backgroundColor: '#fff', elevation: 3 },
+  tabItem: { flex: 1, paddingVertical: 14, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  activeTab: { borderBottomColor: '#007bff' },
+  tabText: { fontSize: 11, fontWeight: '800', color: '#adb5bd' },
+  activeTabText: { color: '#007bff' },
+  searchContainer: { padding: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  searchBar: { backgroundColor: '#f1f3f5', padding: 10, borderRadius: 10, fontSize: 13 },
+
+  // ARAÇ KARTI
+  card: { backgroundColor: '#fff', padding: 12, borderRadius: 15, flexDirection: 'row', alignItems: 'center', marginBottom: 12, elevation: 2 },
+  plakaBadge: { flexDirection: 'row', backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#333', borderRadius: 5, overflow: 'hidden', width: 95 },
+  trStrip: { width: 12, height: 32, backgroundColor: '#003399' },
+  plakaText: { flex: 1, color: '#1a1a1a', fontWeight: 'bold', textAlign: 'center', fontSize: 13, alignSelf: 'center' },
+  info: { flex: 1, marginLeft: 15 },
+  modelText: { fontWeight: 'bold', color: '#2c3e50', fontSize: 14 },
+  userText: { fontSize: 12, color: '#7f8c8d', marginTop: 2 },
+  arrow: { color: '#dfe6e9', fontSize: 18 },
+
+  // KRİTİK KARTLAR
+  criticalCard: { backgroundColor: '#fff', borderRadius: 15, marginBottom: 15, elevation: 3, overflow: 'hidden' },
+  criticalHeader: { padding: 12, backgroundColor: '#fcfcfc', borderBottomWidth: 1, borderBottomColor: '#f1f1f1', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  plakaBadgeSmall: { flexDirection: 'row', backgroundColor: '#fff', borderWidth: 1, borderColor: '#333', borderRadius: 4, overflow: 'hidden', width: 85 },
+  trStripSmall: { width: 10, height: 24, backgroundColor: '#003399' },
+  plakaTextSmall: { flex: 1, color: '#1a1a1a', fontWeight: 'bold', textAlign: 'center', fontSize: 11, alignSelf: 'center' },
+  modelTextSmall: { fontSize: 11, color: '#95a5a6' },
+  criticalBody: { padding: 12 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  dateLabelBadge: { backgroundColor: '#f1f3f5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderLeftWidth: 3, flex: 0.8 },
+  dateLabel: { fontSize: 9, fontWeight: 'bold', color: '#495057' },
+  dateVal: { flex: 1.2, fontSize: 12, color: '#2c3e50', fontWeight: '600', marginLeft: 10 },
+  daysBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  daysText: { color: '#fff', fontSize: 9, fontWeight: '900' },
+
+  // GEÇMİŞ KARTI (Modernize)
+  historyCard: { backgroundColor: '#fff', padding: 15, borderRadius: 18, marginBottom: 12, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#27ae60' },
+  historyTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  historyDate: { fontSize: 11, color: '#95a5a6', fontWeight: '600' },
+  historyMid: { marginBottom: 12 },
+  historyType: { fontSize: 15, fontWeight: '800', color: '#2c3e50', marginBottom: 4 },
+  historyDescription: { fontSize: 12, color: '#7f8c8d', fontStyle: 'italic', backgroundColor: '#f8f9fa', padding: 8, borderRadius: 8, marginTop: 4 },
+  historyBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f1f1f1', paddingTop: 10 },
+  kmBadge: { backgroundColor: '#e8f5e9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  historyKM: { fontSize: 11, color: '#2e7d32', fontWeight: 'bold' },
+  historyPrice: { fontSize: 15, fontWeight: '900', color: '#27ae60' },
+
+  emptyText: { textAlign: 'center', marginTop: 50, color: '#bdc3c7' }
+});

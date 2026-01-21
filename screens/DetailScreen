@@ -1,0 +1,293 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, 
+  Linking, Alert, StatusBar, RefreshControl, ActivityIndicator,
+  Image 
+} from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+export default function DetailScreen({ route, navigation }) {
+  const initialVehicle = route.params?.vehicle;
+  const [vehicle, setVehicle] = useState(initialVehicle);
+  const [loading, setLoading] = useState(!initialVehicle);
+  const [refreshing, setRefreshing] = useState(false);
+  const isFocused = useIsFocused();
+
+  const fetchUpdatedData = async () => {
+    try {
+      const response = await fetch(`https://dgnbatuhan.online/filo/api_get_vehicles.php?t=${new Date().getTime()}`);
+      const data = await response.json();
+      const targetId = vehicle?.id || initialVehicle?.id;
+      const updatedVehicle = data.find(v => v.id == targetId);
+      
+      if (updatedVehicle) {
+        setVehicle(updatedVehicle);
+      }
+    } catch (error) {
+      console.error("Yenileme hatası:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isFocused) fetchUpdatedData();
+  }, [isFocused]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchUpdatedData();
+  }, []);
+
+  const getBrandLogoUrl = (markaModel) => {
+    const text = markaModel?.toLowerCase() || "";
+    let brand = "default";
+    
+    if (text.includes("ford")) brand = "ford";
+    else if (text.includes("renault")) brand = "renault";
+    else if (text.includes("fiat")) brand = "fiat";
+    else if (text.includes("volkswagen") || text.includes("vw")) brand = "volkswagen";
+    else if (text.includes("mercedes")) brand = "mercedes";
+    else if (text.includes("bmw")) brand = "bmw";
+    else if (text.includes("toyota")) brand = "toyota";
+    else if (text.includes("hyundai")) brand = "hyundai";
+    else if (text.includes("mg")) brand = "mg";
+    else if (text.includes("dacıa") || text.includes("dacia")) brand = "dacia";
+    else if (text.includes("tesla")) brand = "tesla";
+    else if (text.includes("kıa") || text.includes("kia")) brand = "kia";
+
+    return `https://dgnbatuhan.online/filo/logos/${brand}.png`;
+  };
+
+  const openFile = async (url) => {
+    if (!url || url === "" || url === "null" || url.includes('null')) {
+      Alert.alert("Bilgi", "Bu döküman henüz sisteme yüklenmemiş.");
+      return;
+    }
+    Linking.openURL(url).catch(() => Alert.alert("Hata", "Dosya açılamadı."));
+  };
+
+  if (loading && !vehicle) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Veriler Yükleniyor...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mainContainer}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* ÜST HEADER: LOGO ÖN PLANDA */}
+      <View style={styles.headerContainer}>
+        
+        {/* Marka Logosu - Merkezi ve Renkli */}
+        <View style={styles.logoWrapper}>
+            <Image 
+              source={{ uri: getBrandLogoUrl(vehicle?.marka_model) }}
+              style={styles.brandLogoMain}
+              resizeMode="contain"
+            />
+        </View>
+
+        <View style={styles.plakaMainBadge}>
+          <View style={styles.trStrip} />
+          <Text style={styles.plakaMainText}>{vehicle?.plaka}</Text>
+        </View>
+        
+        <Text style={styles.modelHeaderText}>{vehicle?.marka_model}</Text>
+        
+        <View style={styles.statusBadge}>
+          <Text style={styles.statusText}>AKTİF FİLO ARACI</Text>
+        </View>
+      </View>
+
+      <ScrollView 
+        style={styles.container} 
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#007AFF" />}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          
+          <View style={styles.glassCard}>
+            <Text style={styles.cardTitle}>📦 ARAÇ GENEL BİLGİLERİ</Text>
+            <View style={styles.infoGrid}>
+              <InfoBox label="ARAÇ SAHİBİ" value={vehicle?.firma} />
+              <InfoBox label="KİRALAYAN" value={vehicle?.kiralayan_firma || 'Öz Varlık'} />
+              <InfoBox label="KULLANICI" value={vehicle?.araç_kullanicisi} />
+              <InfoBox label="BÖLÜM" value={vehicle?.bolum} />
+              <InfoBox label="YAKIT TİPİ" value={vehicle?.yakit_tipi} />
+              <InfoBox label="HGS NO" value={vehicle?.hgs_etiket_no} />
+            </View>
+          </View>
+
+          <View style={styles.glassCard}>
+            <Text style={[styles.cardTitle, {color: '#E74C3C'}]}>📅 KRİTİK VADELER</Text>
+            <View style={styles.dateGrid}>
+              <DateBox label="MUAYENE" value={vehicle?.muayene_tarihi} color="#E74C3C" />
+              <DateBox label="KASKO" value={vehicle?.kasko_bitis_tarihi} color="#F39C12" />
+              <DateBox label="SİGORTA" value={vehicle?.trafik_sigorta_tarihi} color="#27AE60" />
+              <DateBox label="KİRA BİTİŞ" value={vehicle?.kira_bitis} color="#2980B9" />
+            </View>
+
+            <Text style={styles.subSectionTitle}>DİJİTAL DOSYALAR</Text>
+            <View style={styles.fileButtonGroup}>
+              <FileButton title="Ruhsat" color="#2C3E50" onPress={() => openFile(vehicle?.ruhsat_dosya_yolu)} />
+              <FileButton title="Muayene" color="#7F8C8D" onPress={() => openFile(vehicle?.muayene_dosya_yolu)} />
+              <FileButton title="Kasko" color="#D35400" onPress={() => openFile(vehicle?.kasko_dosya_yolu)} />
+              <FileButton title="Sözleşme" color="#2980B9" onPress={() => openFile(vehicle?.sozlesme_dosyayolu)} />
+            </View>
+          </View>
+
+          <View style={[styles.glassCard, { marginBottom: 50 }]}>
+            <View style={styles.tableHeaderAction}>
+              <Text style={[styles.cardTitle, { color: '#27AE60' }]}>🛠 SERVİS GEÇMİŞİ</Text>
+              <TouchableOpacity 
+                style={styles.addServiceBtn}
+                onPress={() => navigation.navigate('AddService', { vehicleId: vehicle?.id, plaka: vehicle?.plaka })}
+              >
+                <Text style={styles.addServiceBtnText}>+ İŞLEM EKLE</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.tableTh}>
+              <Text style={[styles.thText, { flex: 1.2 }]}>TARİH</Text>
+              <Text style={[styles.thText, { flex: 2 }]}>İŞLEM / KM</Text>
+              <Text style={[styles.thText, { flex: 1, textAlign: 'right' }]}>MALİYET</Text>
+            </View>
+
+            {vehicle?.servis_gecmisi && vehicle.servis_gecmisi.length > 0 ? (
+              [...vehicle.servis_gecmisi].reverse().map((item, index) => (
+                <View key={index} style={styles.tableTr}>
+                  <Text style={[styles.trDateText, { flex: 1.2 }]}>{item.islem_tarihi}</Text>
+                  <View style={{ flex: 2 }}>
+                    <Text style={styles.trActionText}>{item.islem_tipi}</Text>
+                    <Text style={styles.trKmText}>{item.km_bilgisi} KM</Text>
+                    {item.aciklama ? (
+                      <View style={styles.descBadge}>
+                        <Text style={styles.trDescText}>{item.aciklama}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.trPriceText}>{item.maliyet} ₺</Text>
+                </View>
+              ))
+            ) : (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noData}>Henüz servis kaydı girilmemiş.</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const InfoBox = ({ label, value }) => (
+  <View style={styles.infoBoxContainer}>
+    <View style={styles.infoLabelBadge}>
+      <Text style={styles.infoLabelText}>{label}</Text>
+    </View>
+    <Text style={styles.infoValueText} numberOfLines={1}>{value || '---'}</Text>
+  </View>
+);
+
+const DateBox = ({ label, value, color }) => (
+  <View style={[styles.dateBox, { borderLeftColor: color }]}>
+    <Text style={[styles.dateLabel, { color: color }]}>{label}</Text>
+    <Text style={styles.dateValue}>{value || '---'}</Text>
+  </View>
+);
+
+const FileButton = ({ title, color, onPress }) => (
+  <TouchableOpacity style={[styles.fileBtn, { backgroundColor: color }]} onPress={onPress}>
+    <Text style={styles.fileBtnText}>{title}</Text>
+  </TouchableOpacity>
+);
+
+const styles = StyleSheet.create({
+  mainContainer: { flex: 1, backgroundColor: '#F0F2F5' },
+  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1 },
+  
+  headerContainer: { 
+    backgroundColor: '#1A1A1A', 
+    paddingTop: 40, 
+    paddingBottom: 30, 
+    alignItems: 'center', 
+    borderBottomLeftRadius: 40, 
+    borderBottomRightRadius: 40,
+    elevation: 15,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10
+  },
+  logoWrapper: {
+    width: 80,
+    height: 80,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)'
+  },
+  brandLogoMain: {
+    width: 55,
+    height: 55,
+  },
+  plakaMainBadge: { 
+    backgroundColor: '#FFF', 
+    flexDirection: 'row',
+    borderRadius: 8, 
+    borderWidth: 2, 
+    borderColor: '#333',
+    height: 50,
+    minWidth: 180,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5
+  },
+  trStrip: { width: 22, height: '100%', backgroundColor: '#003399' },
+  plakaMainText: { fontSize: 24, fontWeight: 'bold', color: '#1A1A1A', paddingHorizontal: 15, letterSpacing: 1 },
+  modelHeaderText: { color: '#FFF', fontSize: 18, marginTop: 10, fontWeight: '700' },
+  statusBadge: { backgroundColor: '#27AE60', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 15, marginTop: 10 },
+  statusText: { color: '#FFF', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+
+  content: { padding: 15 },
+  glassCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 20, marginBottom: 15, elevation: 4 },
+  cardTitle: { fontSize: 12, fontWeight: '900', color: '#007AFF', marginBottom: 20, letterSpacing: 1 },
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  infoBoxContainer: { width: '48%', marginBottom: 18 },
+  infoLabelBadge: { backgroundColor: '#F1F3F5', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, borderLeftWidth: 3, borderLeftColor: '#007AFF', alignSelf: 'flex-start', marginBottom: 5 },
+  infoLabelText: { fontSize: 9, color: '#495057', fontWeight: 'bold' },
+  infoValueText: { fontSize: 14, color: '#212529', fontWeight: '700', paddingLeft: 4 },
+  dateGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  dateBox: { width: '48%', backgroundColor: '#F8F9FA', padding: 12, borderRadius: 12, borderLeftWidth: 4, marginBottom: 12 },
+  dateLabel: { fontSize: 9, fontWeight: '800', marginBottom: 3 },
+  dateValue: { fontSize: 13, fontWeight: '700', color: '#333' },
+  subSectionTitle: { fontSize: 10, color: '#ADB5BD', fontWeight: 'bold', marginTop: 15, marginBottom: 12, textAlign: 'center', letterSpacing: 2 },
+  fileButtonGroup: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
+  fileBtn: { paddingVertical: 12, borderRadius: 12, flex: 1, minWidth: '45%', alignItems: 'center' },
+  fileBtnText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
+  tableHeaderAction: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  addServiceBtn: { backgroundColor: '#27AE60', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 10 },
+  addServiceBtnText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  tableTh: { flexDirection: 'row', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F1F3F5' },
+  thText: { fontSize: 10, color: '#ADB5BD', fontWeight: 'bold' },
+  tableTr: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#F8F9FA' },
+  trDateText: { fontSize: 11, color: '#7F8C8D', fontWeight: '600', marginBottom: 5 },
+  trActionText: { fontSize: 15, color: '#2C3E50', fontWeight: 'bold' },
+  trKmText: { fontSize: 11, color: '#95A5A6', marginTop: 2 },
+  descBadge: { backgroundColor: '#F1F3F5', padding: 8, borderRadius: 8, marginTop: 8 },
+  trDescText: { fontSize: 12, color: '#5D6D7E', fontStyle: 'italic' },
+  trPriceText: { position: 'absolute', right: 0, top: 18, color: '#27AE60', fontWeight: '900', fontSize: 16 },
+  noDataContainer: { padding: 30, alignItems: 'center' },
+  noData: { color: '#BDC3C7', fontSize: 12, fontStyle: 'italic' }
+});
